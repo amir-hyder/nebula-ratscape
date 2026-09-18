@@ -28,4 +28,4 @@ Reads `backend/.env` (`ONEMAP_EMAIL`, `ONEMAP_PASSWORD`, `LTA_ACCOUNT_KEY`).
 
 Live responses carry `"simulated": false` or `"source": "onemap"`; the Flutter
 app falls back to labelled offline fixtures when this server is unreachable.
-Attribution: routes © OneMap / Singapore Land Authority; map data © OpenStreetMap contributors (ODbL); tiles © CARTO; weather © data.gov.sg; transport feeds © LTA DataMall. Overpass responses are cached under `.cache/osm` for 24 hours so the public instance is queried once per area.
+Attribution: routes © OneMap / Singapore Land Authority; map data and default tiles © OpenStreetMap contributors (ODbL); weather © data.gov.sg; transport feeds © LTA DataMall. The Flutter app uses FOSSGIS-hosted OSM tiles by default and can select another provider explicitly. Overpass responses are cached under `.cache/osm` for 24 hours so the public instance is queried once per area.

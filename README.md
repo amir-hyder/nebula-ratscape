@@ -1,22 +1,23 @@
 # NAVI
 
-NAVI is a Flutter Web prototype for the NEBULA X / LTA Smart Commuter Companion problem. It demonstrates a child's watch-style journey view, a parent's phone view, and a combined view with one shared mock state. All places, timing, maps, bus arrivals and notifications in this build are **simulated**.
+NAVI is a Flutter Web prototype for the NEBULA X / LTA Smart Commuter Companion problem. It demonstrates a child's watch-style journey view, a parent's phone view, and a combined view with one shared in-memory journey state. The FastAPI demo backend can fetch live routes and conditions from OneMap, LTA DataMall, data.gov.sg and OpenStreetMap. The child's position and clock, saved places, scripted incidents, parent–child state and notifications are simulated; routes fall back to labelled offline fixtures when the backend is unavailable.
 
 ## Persona and how this answers PS2
 
 The NEBULA X PS2 brief (Smart Commuter Companion) lets teams propose their own persona. NAVI builds for **Maya, a primary school child (7 to 12) travelling alone**, with her parent as the second user. This is a stricter case of the brief's Mdm Lim persona: the whole trip must be planned door to door in advance, the child must never be asked to improvise a reroute, every instruction must be one short line with a picture, and someone else needs to know when something goes wrong. The three mandatory capabilities map as follows:
 
 - **Route planning (3.2.1):** door-to-door OneMap itineraries, re-planned from the child's actual position when a condition matters, with the reason shown to both users. Rain doubles the cost of walking minutes in the ranking; crowding and delays produce advice or a reroute.
-- **GIS on OpenStreetMap (3.2.2):** OSM is the basemap on every map (community-hosted OSM tiles, cached per session, with a `--dart-define` hook for a keyed provider, so the OSMF tile server is not hammered) and the source of the pedestrian detail the child needs: crossings, steps and sheltered walkways along each walk, and staffed "safe places" near the child when she asks for help. All OSM data is fetched through Overpass, cached on disk, and shown with "© OpenStreetMap contributors".
+- **GIS on OpenStreetMap (3.2.2):** OSM is the default basemap (community-hosted OSM tiles, cached per session, with a `--dart-define` hook for a keyed provider) and the source of the pedestrian detail the child needs: crossings, steps and sheltered walkways along each walk, and staffed "safe places" near the child when she asks for help. Pedestrian features are fetched through Overpass and cached on disk; OSM maps and derived data show "© OpenStreetMap contributors".
 - **Visualisation (3.2.3):** the route on a map with the affected part hatched red and the alternative drawn against the original, a three-level crowd scale in words and symbols, time and delay on every option, and a 3D heading-up walking view sized for a watch and one thumb.
 
 ## Run locally
 
 Requirements: Flutter 3.47+ with web support, Python 3.11+, and a modern browser. On macOS, `brew install --cask flutter` installs the Flutter SDK, or unzip the official archive to `~/development/flutter` and add `~/development/flutter/bin` to your `PATH`.
 
-**1. Backend (OneMap + LTA proxy).** Put your OneMap account email/password and LTA DataMall AccountKey in `backend/.env` (copy `backend/.env.example`; the file is Git-ignored). Then:
+**1. Backend (OneMap + LTA proxy).** From the repository root, copy the example file and put your OneMap account email/password and LTA DataMall AccountKey in `backend/.env`. Register for a free [OneMap API account](https://www.onemap.gov.sg/apidocs/) and a free [LTA DataMall AccountKey](https://datamall.lta.gov.sg/) if needed. The `.env` file is Git-ignored.
 
 ```sh
+cp backend/.env.example backend/.env
 cd backend/mock
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/uvicorn main:app --port 8080
@@ -24,7 +25,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
 `GET http://127.0.0.1:8080/health` should report `onemapConfigured: true`. See `backend/mock/README.md` for the endpoints.
 
-**2. Flutter web app.**
+**2. Flutter web app.** Open a second terminal at the repository root, leaving FastAPI running in the first terminal:
 
 ```sh
 cd apps/web
@@ -70,7 +71,7 @@ Open **Combined demo** on a wide screen, or switch between Child and Parent on a
 - **3D walking navigation on the watch.** During walking legs the watch shows a tilted, heading-up OpenStreetMap view with the route drawn as a lane with direction chevrons, an extruded 3D chevron for the child, a 3D arrow lying on the road at the next turn, zebra-stripe glyphs at OSM crossings, and a banner with the next turn in child words (*Turn left · in 40 m · Tampines Avenue 4*). Turns are computed from the route geometry, street names come from OneMap's walk steps. Transit legs show a *ride view*: line colour, stop dots, stops to go, *Get off at …*, live bus arrival times and the platform crowd level.
 - **Disruption dashboard → rerouting.** Type what an operator would say, for example `red line delayed 10 min`, `green line closed between Tampines and Bedok`, `bus 10 not running`, `heavy rain`, or tap a preset. The parser maps colour names to MRT lines (red = NSL, green = EWL, orange/yellow = CCL, blue = DTL, purple = NEL, brown = TEL). The engine checks only the child's *remaining* legs and ignores irrelevant lines. When a condition matters, NAVI asks OneMap for fresh itineraries **from the child's actionable position** (current point, or the next stop if aboard), keeps the legs already ridden as the prefix, asks again for bus-only routes if every itinerary is still affected, applies child limits (max walk per leg, max transfers, transfer penalty), and then keeps, delays, reroutes, holds a child who is aboard the affected vehicle, or escalates. OneMap has no "avoid this line" option; the current-position re-query plus bus-only fallback is how NAVI works around that. The result lands on the watch and the parent phone at once, with original and new route on the live map (grey dashed original, red affected section).
 - **Scripted scenarios** replay a fixed sequence so a presenter can jump straight to an interesting state. They are also deep-linkable: `/#lab/walk`, `/#lab/scared`, `/#lab/redline`, `/#lab/bus10`, `/#lab/lost`. In live mode a scenario waits for OneMap before replaying, and the disruption scenarios target whichever line or bus OneMap actually put on the child's route, so they stay meaningful on real data. Add `?nav=flat` to the fragment to show the watch map without the tilt. Plain `/#lab`, `/#child`, `/#parent` and `/#combined` open a view directly.
-- **Child limits** and the alert threshold can be changed live to show how the ranking changes. Everything is simulated and labelled as such; no LTA, OneMap or push service is called.
+- **Child limits** and the alert threshold can be changed during the demo to show how the ranking changes. Scripted incidents and parent–child notifications are simulated and labelled. In the default live mode, the app calls OneMap and LTA through FastAPI when the backend and credentials are available; it does not call a push service.
 
 ## Screenshots
 
@@ -92,7 +93,7 @@ Captured from the running app against live OneMap, LTA, data.gov.sg and OpenStre
 - `apps/web/lib/engine/geo.dart`: distance, bearing, polyline interpolation and turn detection for the watch guidance.
 - `apps/web/lib/engine/demo_network.dart`: MRT line table, station names for the parser, and offline fixture routes (hydrated with approximate geometry) used only when the backend is unreachable.
 - `apps/web/lib/services/navi_api.dart`: HTTP client for `backend/mock` (routes, walk, geocode, train alerts, bus arrivals). No keys in the app.
-- `apps/web/lib/widgets/nav_map.dart`: OneMap tile cache and painter, the tilted 3D watch navigation, and the parent mini map.
+- `apps/web/lib/widgets/nav_map.dart`: OpenStreetMap tile cache and painter, the tilted 3D watch navigation, and the parent mini map. Other tile providers can be selected explicitly.
 - `backend/mock/`: local FastAPI backend holding the OneMap and LTA credentials, plus the data.gov.sg weather and OpenStreetMap Overpass adapters (see its README).
 - `apps/web/lib/state/demo_store.dart`: the one shared in-memory state, simulated clock, flow trace and scripted scenarios.
 - `apps/web/lib/screens/child_view.dart`: watch-style screens, adapted from the original Figma design.
@@ -107,9 +108,9 @@ Captured from the running app against live OneMap, LTA, data.gov.sg and OpenStre
 - `docs/`: product rules, architecture, team boundaries and unresolved decisions.
 - `infrastructure/`: planned Google Cloud deployment.
 
-The backend folders are scaffolds. There is no server, Firestore connection, scheduled polling or external API integration yet. `backend/.env` contains blank placeholders and is Git-ignored; `backend/.env.example` is tracked. Do not put credentials into Flutter assets or `--dart-define` values.
+`backend/mock` is a working FastAPI server for live data. The separate TypeScript modules under `backend/src` are production scaffolds; Firestore, scheduled polling and persistent child–parent journey endpoints are not implemented. `backend/.env` is Git-ignored and `backend/.env.example` is tracked. Keep credentials on the server; do not put them into Flutter assets or `--dart-define` values.
 
-The parent export used Manchester example addresses. The Flutter demo uses Singapore public examples to match the hackathon context. Maps use OneMap basemap tiles with attribution; the schematic strip map remains as a compact summary next to the live map.
+The parent export used Manchester example addresses. The Flutter demo uses Singapore public examples to match the hackathon context. Maps use OpenStreetMap tiles by default with attribution; the schematic strip map remains as a compact summary next to the live map.
 
 Future deployment: static Flutter Web on Firebase Hosting and a TypeScript API on Cloud Run with Firestore. See `infrastructure/README.md`. The prototype can also be hosted statically while the backend is absent.
 
@@ -117,7 +118,7 @@ Future deployment: static Flutter Web on Firebase Hosting and a TypeScript API o
 
 A small Python FastAPI service in `backend/mock` is the **local testing and demo tool**. It is not the intended production backend. Today it proxies OneMap routing, walking, geocoding, LTA train alerts and bus arrivals (see above). The journey-state endpoints below are still planned. The production API remains the TypeScript service on Cloud Run described in `docs/ARCHITECTURE.md`, backed by Firestore and calling OneMap and LTA.
 
-**Purpose.** The mock server will expose sample NAVI data over HTTP so the team can exercise real API requests from the Flutter client, and demonstrate child–parent interactions end to end, before the TypeScript backend, OneMap, LTA DataMall and Firestore are connected. It lets the three backend owners and the frontend agree on request and response shapes against `backend/src/contracts/index.ts` and `contracts/examples/` without any credentials.
+**Purpose.** FastAPI currently proxies live OneMap, LTA DataMall, weather and OpenStreetMap data without exposing API keys to Flutter. The proposed fixture-based journey endpoints below would let the team exercise child–parent interactions over HTTP and agree on request and response shapes against `backend/src/contracts/index.ts` and `contracts/examples/` before the TypeScript service and Firestore are connected.
 
 **Planned sample flows.** All served from in-memory fixtures:
 
@@ -129,7 +130,7 @@ A small Python FastAPI service in `backend/mock` is the **local testing and demo
 - Explicit arrival confirmation: only the child's confirmation creates an arrival event.
 - Replay of demo conditions through a `POST /demo/events` style endpoint: a relevant disruption that changes the route, an irrelevant disruption that changes nothing, a missing or stale location, and a no-suitable-route case.
 
-**Rules for the mock.** Responses must be deterministic for a given sequence of requests, so a demo can be rehearsed and repeated. Every response that contains route, timing, condition or location data must be labelled `"simulated": true`, matching `contracts/examples/journey-decision.json`. A reset endpoint (for example `POST /demo/reset`) must return the server to its initial fixture state. The mock must never hold real child location data or real credentials.
+**Rules for the planned fixture endpoints.** Responses must be deterministic for a given sequence of requests, so a demo can be rehearsed and repeated. Fixture responses containing route, timing, condition or location data must be labelled `"simulated": true`, matching `contracts/examples/journey-decision.json`; live proxy responses must retain their live source labels. A reset endpoint (for example `POST /demo/reset`) must return the fixture state to its initial values. The fixture state must not contain real child location data. FastAPI keeps OneMap and LTA credentials server-side and must never return them to the client.
 
 **Ordering.** Schedule-based time estimation comes last, exactly as for the production backend: leave-by calculations, arrival-deadline searches against a required arrival, arrival buffers, and departure-change alerts are out of scope until the active-journey and disruption flows above work. Until then the mock returns the same simulated leave-time and ETA fields the prototype already shows.
 
