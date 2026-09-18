@@ -1,7 +1,14 @@
 import 'package:flutter/material.dart';
 
-import 'demo_store.dart';
-import 'ui_kit.dart';
+import '../engine/reroute_engine.dart';
+import '../engine/signal_mapper.dart';
+import '../models/route_models.dart';
+import '../models/signals.dart';
+import '../state/demo_store.dart';
+import '../widgets/nav_map.dart';
+import '../widgets/push_banner.dart';
+import '../widgets/route_map.dart';
+import '../widgets/ui_kit.dart';
 
 class ParentView extends StatelessWidget {
   const ParentView({super.key, required this.store});
@@ -44,10 +51,27 @@ class ParentView extends StatelessWidget {
               ),
             ],
           ),
-          child: Column(
+          child: Stack(
             children: [
-              Expanded(child: SingleChildScrollView(child: _screen())),
-              if (root) _bottomNav(),
+              Column(
+                children: [
+                  Expanded(child: SingleChildScrollView(child: _screen())),
+                  if (root) _bottomNav(),
+                ],
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                top: 0,
+                child: PushBanner(
+                  notice: store.parentPush,
+                  onTap: () {
+                    store.dismissPush();
+                    store.parentGo(ParentScreen.dashboard);
+                  },
+                  onDismiss: store.dismissPush,
+                ),
+              ),
             ],
           ),
         ),
@@ -204,6 +228,26 @@ class ParentView extends StatelessWidget {
           ),
         ),
         _body([
+          if (store.weather != null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: store.weather!.raining ? Navi.amber.withAlpha(22) : const Color(0xFFE2F4F1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Text(store.weather!.emoji, style: const TextStyle(fontSize: 18)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${store.weather!.forecast} in ${store.weather!.area} · ${store.weather!.advice} · data.gov.sg',
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: store.weather!.raining ? Navi.amber : Navi.tealDark),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           if (active)
             NaviCard(
               child: Column(
@@ -238,18 +282,45 @@ class ParentView extends StatelessWidget {
                     style: const TextStyle(color: Navi.secondary),
                   ),
                   const SizedBox(height: 12),
-                  if (store.routeChanged)
+                  if (store.latestAlert != null && !store.latestAlert!.acknowledged)
+                    _alertCard(store.latestAlert!),
+                  if (store.decision != null && store.decision!.isAlert)
                     _notice(
-                      'Route updated automatically',
-                      'A simulated EWL disruption affects the route. Bus 10 is shown as the alternative.',
+                      store.decision!.parentTitle,
+                      store.decision!.parentMessage,
+                      store.decision!.action == DecisionAction.noRoute ||
+                              store.decision!.action == DecisionAction.holdAboard
+                          ? Navi.red
+                          : Navi.amber,
+                    ),
+                  if (store.locationUnavailable)
+                    _notice(
+                      'Location unavailable',
+                      'Maya’s watch has not reported a fresh location. Last origin: ${store.originDescription}.',
                       Navi.amber,
                     ),
-                  if (store.helpRequested)
-                    _notice(
-                      'Maya requested help',
-                      'Check in with her right away. This is a demo event.',
-                      Navi.red,
+                  if (store.phase != JourneyPhase.arrived) ...[
+                    MiniMap(
+                      route: store.activeRoute,
+                      original: store.routeChanged ? store.originalRoute : null,
+                      affectedLegIndex: store.decision?.affectedLegIndex ?? -1,
+                      child: store.childPosition,
+                      features: store.helpRequested ? store.safePlaces.take(5).toList() : const [],
                     ),
+                    const SizedBox(height: 8),
+                    RouteStripMap(
+                      route: store.activeRoute,
+                      original: store.routeChanged ? store.originalRoute : null,
+                      affectedLegIndex: store.decision?.affectedLegIndex ?? -1,
+                      currentLegIndex: store.currentLegIndex,
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Now: ${store.stageLabel}',
+                      style: const TextStyle(fontSize: 12, color: Navi.tealDark, fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
                   if (store.phase == JourneyPhase.arrived)
                     _notice(
                       'Arrived safely',
@@ -291,6 +362,14 @@ class ParentView extends StatelessWidget {
               ),
             ),
           if (!active) ...[
+            if (store.latestAlert != null && !store.latestAlert!.acknowledged)
+              _alertCard(store.latestAlert!),
+            if (store.decision != null && store.decision!.isAlert)
+              _notice(
+                store.decision!.parentTitle,
+                store.decision!.parentMessage,
+                store.decision!.action == DecisionAction.noRoute ? Navi.red : Navi.amber,
+              ),
             const SectionLabel('Today’s schedule'),
             NaviCard(
               onTap: () => store.parentGo(
@@ -380,6 +459,114 @@ class ParentView extends StatelessWidget {
               ),
         ]),
       ],
+    );
+  }
+
+  /// A child signal as the parent sees it: what happened, what NAVI told the
+  /// child, what to do next, and one-tap replies that appear on the watch.
+  Widget _alertCard(ParentAlert a) {
+    final colour = switch (a.urgency) {
+      Urgency.critical => Navi.red,
+      Urgency.high => Navi.amber,
+      Urgency.normal => Navi.tealDark,
+    };
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: colour.withAlpha(18),
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: colour.withAlpha(110), width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(a.kind.emoji, style: const TextStyle(fontSize: 22)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  a.title,
+                  style: TextStyle(color: colour, fontWeight: FontWeight.w900, fontSize: 16),
+                ),
+              ),
+              Text(
+                '${a.urgency.name.toUpperCase()} · ${hhmm(a.atMinutes)}',
+                style: TextStyle(color: colour, fontSize: 10, fontWeight: FontWeight.w800),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(a.detail, style: const TextStyle(fontSize: 12.5, color: Navi.ink, height: 1.3)),
+          if (a.safePlace != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                '${a.safePlace!.emoji} Nearest safe place: ${a.safePlace!.name} (${a.safePlace!.label}), ${a.safePlace!.distanceM} m from Maya · © OpenStreetMap contributors',
+                style: const TextStyle(fontSize: 12, color: Navi.tealDark, fontWeight: FontWeight.w700),
+              ),
+            ),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.watch_outlined, size: 14, color: Navi.tealDark),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Watch shows: “${a.childReassurance.replaceAll('\n', ' ')}”',
+                    style: const TextStyle(fontSize: 11, color: Navi.secondary),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              for (final action in a.suggestedActions)
+                ActionChip(
+                  avatar: Icon(
+                    action.startsWith('Call') ? Icons.call : Icons.ios_share,
+                    size: 14,
+                    color: colour,
+                  ),
+                  label: Text(action, style: const TextStyle(fontSize: 11)),
+                  onPressed: () => store.acknowledgeAlert(a),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text('Reply to the watch', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Navi.muted)),
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              for (final reply in SignalMapper.parentQuickReplies)
+                OutlinedButton(
+                  onPressed: () {
+                    store.replyToChild(reply);
+                    store.acknowledgeAlert(a);
+                  },
+                  style: OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                  ),
+                  child: Text(reply),
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -591,20 +778,29 @@ class ParentView extends StatelessWidget {
                   'started' => Icons.place,
                   'arrived' => Icons.check_circle,
                   'help' => Icons.sos,
+                  'delay' => Icons.schedule,
+                  'noRoute' => Icons.report,
+                  'info' => Icons.info_outline,
+                  'reply' => Icons.reply,
                   _ => Icons.alt_route,
-                }, color: e.type == 'help' ? Navi.red : Navi.tealDark),
+                }, color: e.type == 'help' || e.type == 'noRoute'
+                    ? Navi.red
+                    : e.type == 'delay' || e.type == 'route'
+                    ? Navi.amber
+                    : Navi.tealDark),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        switch (e.type) {
-                          'started' => 'Journey started',
-                          'arrived' => 'Arrived safely',
-                          'help' => 'Help requested',
-                          _ => 'Route updated',
-                        },
+                        e.title ??
+                            switch (e.type) {
+                              'started' => 'Journey started',
+                              'arrived' => 'Arrived safely',
+                              'help' => 'Help requested',
+                              _ => 'Route updated',
+                            },
                         style: const TextStyle(
                           fontWeight: FontWeight.w800,
                           color: Navi.ink,
@@ -647,9 +843,10 @@ class ParentView extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 6),
-              Text(store.originDescription),
+              Text('${store.originDescription} · route: ${store.routeSource}'),
+              Text(store.activeRoute.summary, style: const TextStyle(fontWeight: FontWeight.w700, color: Navi.tealDark)),
               Text(
-                'Estimated arrival ${store.estimatedArrival} · due ${store.selectedDestination.schedules.isEmpty ? '—' : store.selectedDestination.schedules.first.arrivalTime}',
+                'Estimated arrival ${store.estimatedArrival} · due ${store.selectedDestination.schedules.isEmpty ? '—' : store.selectedDestination.schedules.first.arrivalTime} · leave by ${store.leaveTime}',
               ),
               if (store.phase == JourneyPhase.arrived)
                 Text(
@@ -662,40 +859,72 @@ class ParentView extends StatelessWidget {
             ],
           ),
         ),
-        if (store.routeChanged)
+        if (store.decision != null && store.decision!.action != DecisionAction.keep)
           _notice(
-            'Route changed',
-            'Relevant train disruption · alternative shown against original.',
-            Navi.amber,
+            store.decision!.parentTitle,
+            '${store.decision!.parentMessage}\n\nEngine note: ${store.decision!.reason}',
+            store.decision!.isAlert ? Navi.amber : Navi.tealDark,
           ),
-        if (store.helpRequested)
-          _notice(
-            'Help requested',
-            'Demo event · no real message was sent.',
-            Navi.red,
-          ),
-        PlaceholderRouteMap(alternative: store.routeChanged),
+        if (store.latestAlert != null && !store.latestAlert!.acknowledged)
+          _alertCard(store.latestAlert!),
+        MiniMap(
+          route: store.activeRoute,
+          original: store.routeChanged ? store.originalRoute : null,
+          affectedLegIndex: store.decision?.affectedLegIndex ?? -1,
+          child: store.active ? store.childPosition : null,
+          height: 220,
+        ),
+        RouteStripMap(
+          route: store.activeRoute,
+          original: store.routeChanged ? store.originalRoute : null,
+          affectedLegIndex: store.decision?.affectedLegIndex ?? -1,
+          currentLegIndex: store.active ? store.currentLegIndex : -1,
+        ),
         const SectionLabel('Journey stages'),
-        for (final item in [
-          'Walk to stop · 5 min',
-          'Bus 10 · 22 min',
-          'Final walk · 5 min',
-        ])
+        for (final (i, leg) in store.activeRoute.legs.indexed)
           NaviCard(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            color: store.active && i == store.currentLegIndex ? const Color(0xFFE2F4F1) : Colors.white,
             child: Row(
               children: [
-                const Icon(
-                  Icons.radio_button_checked,
+                Icon(
+                  store.active && i < store.currentLegIndex
+                      ? Icons.check_circle
+                      : store.active && i == store.currentLegIndex
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_off,
                   color: Navi.tealDark,
-                  size: 15,
+                  size: 16,
                 ),
                 const SizedBox(width: 10),
-                Expanded(child: Text(item)),
+                Expanded(
+                  child: Text(
+                    '${leg.label}: ${leg.from} → ${leg.to} · ${leg.totalMinutes} min'
+                    '${leg.mode == LegMode.walk ? '' : leg.waitMinutes > 0 ? ' (wait ${leg.waitMinutes})' : ''}',
+                    style: const TextStyle(fontSize: 12.5),
+                  ),
+                ),
+                if (store.decision != null && !store.routeChanged && i == store.decision!.affectedLegIndex)
+                  const Icon(Icons.warning_amber_rounded, color: Navi.red, size: 16),
               ],
             ),
           ),
+        if (store.disruptions.isNotEmpty) ...[
+          const SectionLabel('Active conditions'),
+          for (final d in store.disruptions)
+            NaviCard(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              child: Row(
+                children: [
+                  const Icon(Icons.warning_amber_rounded, color: Navi.amber, size: 16),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text('${d.summary} · simulated', style: const TextStyle(fontSize: 12))),
+                ],
+              ),
+            ),
+        ],
         const Text(
-          'Simulated route and times. The real OSM map will replace this preview.',
+          'Simulated route and times. The real OSM map will replace this schematic.',
           style: TextStyle(fontSize: 11, color: Navi.muted),
         ),
       ]),

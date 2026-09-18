@@ -9,6 +9,8 @@
 **/*.pem
 **/*.p12
 **/node_modules/
+**/__pycache__/
+**/*.py[cod]
 **/.dart_tool/
 **/.flutter-plugins*
 **/.packages
@@ -22,3 +24,5 @@
 !**/package-lock.json
 AGENTS.md
 **/AGENTS.md
+**/.venv/
+**/.cache/

@@ -1,24 +1,52 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
-import 'child_view.dart';
-import 'demo_store.dart';
-import 'parent_view.dart';
-import 'ui_kit.dart';
+import 'demo/demo_lab.dart';
+import 'screens/child_view.dart';
+import 'screens/parent_view.dart';
+import 'state/demo_store.dart';
+import 'widgets/nav_map.dart';
+import 'widgets/ui_kit.dart';
 
 void main() => runApp(const NaviApp());
 
-enum ViewingMode { landing, child, parent, combined }
+enum ViewingMode { landing, child, parent, combined, lab }
 
 class NaviApp extends StatefulWidget {
-  const NaviApp({super.key});
+  const NaviApp({super.key, this.live = true, this.motion = true});
+  /// Use the local backend (OneMap/LTA) when reachable.
+  final bool live;
+  /// Move the simulated child along the route so the watch navigates.
+  final bool motion;
   @override
   State<NaviApp> createState() => _NaviAppState();
 }
 
 class _NaviAppState extends State<NaviApp> {
-  final store = DemoStore();
-  ViewingMode mode = ViewingMode.landing;
+  late final store = DemoStore(live: widget.live, motion: widget.motion);
+  // Deep links for presentations: #lab, #child, #parent, #combined, or
+  // #lab/<scenario> to replay a scripted scenario (see DemoStore.scenarios).
+  ViewingMode mode = switch (Uri.base.fragment.split('/').first) {
+    'lab' => ViewingMode.lab,
+    'child' => ViewingMode.child,
+    'parent' => ViewingMode.parent,
+    'combined' => ViewingMode.combined,
+    _ => ViewingMode.landing,
+  };
   bool combinedChild = true;
+
+  @override
+  void initState() {
+    super.initState();
+    final parts = Uri.base.fragment.split('?').first.split('/');
+    final nav = RegExp(r'nav=(\w+)').firstMatch(Uri.base.fragment);
+    if (nav != null) NavMap3D.mode = nav.group(1)!;
+    final tiles = RegExp(r'tiles=(\w+)').firstMatch(Uri.base.fragment);
+    if (tiles != null) MapTiles.provider = tiles.group(1)!;
+    if (parts.length > 1 && parts[1].isNotEmpty) unawaited(store.runScenario(parts[1]));
+  }
+
   @override
   void dispose() {
     store.dispose();
@@ -61,7 +89,8 @@ class _NaviAppState extends State<NaviApp> {
                             setState(() => mode = ViewingMode.landing),
                         child: const Text('Views'),
                       ),
-                    if (mode != ViewingMode.landing)
+                    if (mode != ViewingMode.landing &&
+                        mode != ViewingMode.lab)
                       IconButton(
                         tooltip: 'Demo controls',
                         onPressed: store.toggleDemo,
@@ -86,7 +115,10 @@ class _NaviAppState extends State<NaviApp> {
                               ParentView(store: store),
                             if (mode == ViewingMode.combined)
                               _combined(c.maxWidth),
+                            if (mode == ViewingMode.lab)
+                              DemoLab(store: store, width: c.maxWidth),
                             if (mode != ViewingMode.landing &&
+                                mode != ViewingMode.lab &&
                                 store.demoPanelOpen)
                               Padding(
                                 padding: const EdgeInsets.only(top: 18),
@@ -146,6 +178,13 @@ class _NaviAppState extends State<NaviApp> {
           'Combined demo',
           'See how both views stay in sync',
           ViewingMode.combined,
+        ),
+        const SizedBox(height: 12),
+        _modeCard(
+          Icons.science_outlined,
+          'Demo lab',
+          'Child input → NAVI → parent output, plus a disruption dashboard for live rerouting',
+          ViewingMode.lab,
         ),
         const SizedBox(height: 20),
         const Text(
@@ -284,6 +323,10 @@ class _NaviAppState extends State<NaviApp> {
                 label: const Text('Clear failure'),
                 onPressed: () =>
                     store.setFailure(location: false, route: false),
+              ),
+              ActionChip(
+                label: const Text('Reset demo'),
+                onPressed: store.resetDemo,
               ),
             ],
           ),

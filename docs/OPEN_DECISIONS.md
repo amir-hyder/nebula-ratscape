@@ -3,7 +3,7 @@
 Priority note: implement schedule-based time estimation last. The existing prototype and contracts retain their simulated leave-time and ETA fields; defer live leave-by calculations, arrival-deadline search, arrival buffers, and departure-change alerts until the active-journey route and disruption flow is working.
 
 - Prove an arrival-deadline search using OneMap's departure-time API and real returned itinerary timestamps.
-- Determine how to obtain useful mixed-mode alternatives around a specific unavailable segment when the first OneMap candidates are all affected. Bus-only is a coarse fallback.
+- Determine how to obtain useful mixed-mode alternatives around a specific unavailable segment when the first OneMap candidates are all affected. The prototype re-queries from the child's actionable position with `numItineraries=3` (OneMap's maximum) and falls back to `mode=BUS`; a finer approach (intermediate waypoints, later departure times) is untested.
 - Map OneMap service/station/direction identifiers to LTA affected segments with tested real samples.
 - Set child-suitable limits for walking, transfers and delay, including when a simpler route outranks a faster one.
 - Set default arrival buffer, alert threshold and repeat-suppression interval.
