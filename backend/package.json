@@ -1,0 +1,13 @@
+{
+  "name": "navi-backend",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Future NAVI API scaffold. No server is implemented in the UI prototype phase.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  }
+}
