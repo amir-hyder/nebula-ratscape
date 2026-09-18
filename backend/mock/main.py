@@ -24,7 +24,11 @@ from onemap import OneMapClient, OneMapError
 from osm import OsmClient
 from weather import WeatherClient
 
-load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+# Repository root .env is the documented location (see .env.example).
+# backend/.env is still honoured so existing checkouts keep working.
+_ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(_ROOT / ".env")
+load_dotenv(_ROOT / "backend" / ".env")
 
 app = FastAPI(title="NAVI local backend", version="0.2.0")
 app.add_middleware(
