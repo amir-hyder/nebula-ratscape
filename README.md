@@ -58,6 +58,10 @@ For a release build: `flutter build web` writes static files to `apps/web/build/
 
 Open **Combined demo** on a wide screen, or switch between Child and Parent on a phone. In the parent view, add or edit a destination and recurring arrival schedule. In the child view, choose a destination, start the journey, move through walking/waiting/onboard/reaching/final walk (with transfers when the route has them), then explicitly confirm arrival. Parent updates and notifications reflect child actions. Open the top-right **Demo controls** to simulate a relevant disruption, leaving earlier, help, unavailable location or no route. All demo events are local to the current browser session and reset on refresh.
 
+## Demo recording
+
+[Watch the NAVI demo](https://drive.google.com/file/d/1UbFZAyWLzecdDtVa21JeEmEolfWBMIZq/view?usp=sharing)
+
 ## Demo lab (presentation mode)
 
 **Demo lab** puts the child watch on the left, the parent phone on the right, and between them a **signal flow** trace and a **disruption dashboard**. It is built for showing, on one screen, that a child's tap becomes a parent's alert and that a network problem becomes a new instruction on the watch.
