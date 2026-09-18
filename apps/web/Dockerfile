@@ -1,0 +1,18 @@
+FROM ghcr.io/cirruslabs/flutter:stable AS build
+
+WORKDIR /app
+COPY . .
+
+RUN flutter pub get
+RUN flutter build web \
+    --dart-define=NAVI_API=https://navi-api-525038995260.asia-southeast1.run.app
+
+FROM nginx:alpine
+
+COPY --from=build /app/build/web /usr/share/nginx/html
+
+RUN sed -i 's/listen       80;/listen       8080;/' /etc/nginx/conf.d/default.conf
+
+EXPOSE 8080
+
+CMD ["nginx", "-g", "daemon off;"]
